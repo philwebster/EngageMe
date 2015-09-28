@@ -1,0 +1,80 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<title>global HTML page</title>
+<script type="text/javascript">
+
+var jiveUrl;
+var username;
+var password;
+var statusUpdate;
+
+function updateStatus(personDict) {
+  return new Promise(function(resolve, reject) {
+    xhr = new XMLHttpRequest();
+    var profileURL = 'https://' + jiveUrl + '/api/core/v3/people/' + personDict['id'];
+    xhr.open('PUT', profileURL, true);
+    xhr.setRequestHeader("Authorization", "Basic " + window.btoa(username + ":" + password));
+    xhr.setRequestHeader("Content-Type", "application/json");
+    personDict["status"] = statusUpdate;
+    xhr.onload = function() {
+      if (xhr.status === 200) {
+        console.log("Update status succeeded.");
+        resolve("success");
+      }
+      else if (xhr.status !== 200) {
+        console.log('Update status failed.  Returned status of ' + xhr.status);
+        reject(Error("there was a problem updating status"));
+      }
+    };
+    xhr.send(JSON.stringify(personDict));
+  });
+}
+
+function getProfile() {
+  return new Promise(function(resolve, reject) {
+    xhr = new XMLHttpRequest();
+    
+    xhr.open('GET', 'https://' + jiveUrl + '/api/core/v3/people/username/' + username, true);
+    xhr.setRequestHeader("Authorization", "Basic " + window.btoa(username + ":" + password));
+    xhr.onload = function() {
+      if (xhr.status === 200) {
+        var dictStartIndex = xhr.responseText.indexOf("{");
+        var dictString = xhr.responseText.slice(dictStartIndex);
+        var dict = JSON.parse(dictString);
+        resolve(dict);
+      }
+      else if (xhr.status !== 200) {
+        console.log('Request failed.  Returned status of ' + xhr.status);
+        reject(Error("there was a problem getting profile"));
+      }
+    };
+    xhr.send();
+  });
+}
+
+function updateSettings() {
+  jiveUrl = safari.extension.settings.jiveUrl;
+  username = safari.extension.settings.username;
+  password = safari.extension.secureSettings.password;
+  statusUpdate = safari.extension.settings.statusUpdate;
+}
+
+function newWindow(event) {
+  updateSettings();
+  if (!(username && password)) {
+    return;
+  }
+  
+  if (event.target instanceof SafariBrowserWindow) {
+    getProfile().then(function(response) {
+      updateStatus(response);
+    });
+  }
+}
+
+</script>
+</head>
+<body>
+</body>
+</html>
