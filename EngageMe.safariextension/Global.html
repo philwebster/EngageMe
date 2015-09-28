@@ -8,6 +8,8 @@ var jiveUrl;
 var username;
 var password;
 var statusUpdate;
+var lastFailedTime = 0;
+var failureTimeout = 60000; // 60 seconds
 
 function updateStatus(personDict) {
   return new Promise(function(resolve, reject) {
@@ -16,14 +18,23 @@ function updateStatus(personDict) {
     xhr.open('PUT', profileURL, true);
     xhr.setRequestHeader("Authorization", "Basic " + window.btoa(username + ":" + password));
     xhr.setRequestHeader("Content-Type", "application/json");
-    personDict["status"] = statusUpdate;
+
+    if (personDict["status"] === statusUpdate) {
+      // add a space to trick Jive into thinking it's a new status. Not sure if this is necessary.
+      personDict["status"] = statusUpdate + " ";
+    }
+    else {
+      personDict["status"] = statusUpdate;
+    }
+
     xhr.onload = function() {
       if (xhr.status === 200) {
-        console.log("Update status succeeded.");
+        console.log("Status update succeeded.");
         resolve("success");
       }
       else if (xhr.status !== 200) {
         console.log('Update status failed.  Returned status of ' + xhr.status);
+        lastFailedTime = Date.now();
         reject(Error("there was a problem updating status"));
       }
     };
@@ -34,7 +45,6 @@ function updateStatus(personDict) {
 function getProfile() {
   return new Promise(function(resolve, reject) {
     xhr = new XMLHttpRequest();
-    
     xhr.open('GET', 'https://' + jiveUrl + '/api/core/v3/people/username/' + username, true);
     xhr.setRequestHeader("Authorization", "Basic " + window.btoa(username + ":" + password));
     xhr.onload = function() {
@@ -46,32 +56,72 @@ function getProfile() {
       }
       else if (xhr.status !== 200) {
         console.log('Request failed.  Returned status of ' + xhr.status);
-        reject(Error("there was a problem getting profile"));
+        lastFailedTime = Date.now();
+        reject(Error("Jive doesn't like us"));
       }
     };
     xhr.send();
   });
 }
 
+function getIntranetStatus() {
+  return new Promise(function(resolve, reject) {
+    xhr = new XMLHttpRequest();
+    // We're going to assume that the following URL is only internally accessible. If we can
+    // reach it, we'll continue updating the status, otherwise we'll stop.
+    var intranetUrlToCheck = 'https://sso' + jiveUrl.slice(jiveUrl.indexOf('.'))
+    xhr.open('GET', intranetUrlToCheck, true);
+    xhr.onload = function() {
+      console.log(xhr.getAllResponseHeaders());
+      if (xhr.status === 200) {
+        console.log("on the intranet");
+        resolve();
+      }
+      else if (xhr.status !== 200) {
+        console.log('Request failed.  Returned status of ' + xhr.status);
+        reject(Error("Jive doesn't like us"));
+      }
+    };
+    xhr.onerror = function() {
+      reject(Error("not on the intranet"));
+    };
+    xhr.send();
+  });
+}
+
 function updateSettings() {
+  console.log("updating settings");
   jiveUrl = safari.extension.settings.jiveUrl;
   username = safari.extension.settings.username;
   password = safari.extension.secureSettings.password;
   statusUpdate = safari.extension.settings.statusUpdate;
+  lastFailedTime = 0;
 }
 
 function newWindow(event) {
-  updateSettings();
-  if (!(username && password)) {
+  if ((Date.now() - lastFailedTime) < failureTimeout) {
+    console.log("waiting 60 seconds to update status due to previous error");
+    return;
+  };
+
+  if (!(username && password && jiveUrl && statusUpdate)) {
+    console.log("settings fields need to be filled in");
     return;
   }
   
   if (event.target instanceof SafariBrowserWindow) {
-    getProfile().then(function(response) {
-      updateStatus(response);
+    getIntranetStatus().then(function(response) {
+      getProfile().then(function(response) {
+        updateStatus(response);
+      })
     });
   }
 }
+
+safari.application.addEventListener("open", newWindow, true);
+safari.extension.settings.addEventListener("change", updateSettings, false);
+safari.extension.secureSettings.addEventListener("change", updateSettings, false);
+updateSettings();
 
 </script>
 </head>
