@@ -69,7 +69,7 @@ function getIntranetStatus() {
     xhr = new XMLHttpRequest();
     // We're going to assume that the following URL is only internally accessible. If we can
     // reach it, we'll continue updating the status, otherwise we'll stop.
-    var intranetUrlToCheck = 'https://sso' + jiveUrl.slice(jiveUrl.indexOf('.'))
+    var intranetUrlToCheck = 'http://sso' + jiveUrl.slice(jiveUrl.indexOf('.'))
     xhr.open('GET', intranetUrlToCheck, true);
     xhr.onload = function() {
       console.log(xhr.getAllResponseHeaders());
@@ -78,8 +78,8 @@ function getIntranetStatus() {
         resolve();
       }
       else if (xhr.status !== 200) {
-        console.log('Request failed.  Returned status of ' + xhr.status);
-        reject(Error("Jive doesn't like us"));
+        console.log('Request failed, but we got a response.  Returned status of ' + xhr.status);
+        resolve();
       }
     };
     xhr.onerror = function() {
